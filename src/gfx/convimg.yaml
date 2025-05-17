@@ -1,0 +1,26 @@
+palettes:
+  - name: quickrdr_palette
+    fixed-entries:
+      - color: {index: 0, r: 240, g: 240, b: 240}
+      - color: {index: 1, r: 0, g: 0, b: 0}
+      - color: {index: 2, r: 255, g: 255, b: 255}
+      - color: {index: 3, r: 80, g: 80, b: 80}
+      - color: {index: 4, r: 50, g: 100, b: 200}
+      - color: {index: 5, r: 50, g: 50, b: 50}
+      - color: {index: 6, r: 150, g: 180, b: 220}
+    images: automatic
+
+converts: []
+  # - name: sprites
+  #   palette: global_palette
+  #   transparent-color-index: 0
+  #   images:
+  #     - oiram.png
+
+outputs:
+  - type: c
+    include-file: gfx.h
+    palettes:
+      - quickrdr_palette
+    converts: []
+      # - sprites
