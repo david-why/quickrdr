@@ -2,16 +2,15 @@
 #include <ti/getcsc.h>
 #include <sys/lcd.h>
 #include <sys/rtc.h>
+#include <sys/power.h>
 
 #include <fileioc.h>
 #include <graphx.h>
-// #include <keypadc.h>
 
 #include "gfx/gfx.h"
 #include "quickrdr.h"
 
 #include <string.h>
-#include <time.h>
 
 #define COLOR_OFF_WHITE 0
 #define COLOR_BLACK 1
@@ -27,8 +26,6 @@
 #define COLOR_MAIN_TEXT COLOR_DARK_GRAY
 #define COLOR_HIGHLIGHT_BG COLOR_ACCENT_BLUE
 #define COLOR_HIGHLIGHT_TEXT COLOR_WHITE
-
-#define KEYBOARD_INTERVAL (CLOCKS_PER_SEC / 10)
 
 typedef enum
 {
@@ -61,8 +58,6 @@ static quickrdr_option_t menu_option = option_open;
 // state_book_list
 static quickrdr_book_t book_list_entries[6];
 static int book_list_page;
-
-static clock_t last_kb;
 
 static void get_time(char *output)
 {
@@ -103,15 +98,10 @@ static void get_time(char *output)
     output[8] = '\0';
 }
 
+static void try_continue_book(void) {}
+
 static int step(void)
 {
-    clock_t current_time = clock();
-    bool handle_kb = false;
-    if (current_time - last_kb >= KEYBOARD_INTERVAL)
-    {
-        last_kb = current_time;
-        handle_kb = true;
-    }
     uint8_t key = os_GetCSC();
     if (state == state_main)
     {
@@ -134,6 +124,29 @@ static int step(void)
                 menu_option = 0;
             }
         }
+        if (key == sk_Enter)
+        {
+            if (menu_option == option_continue)
+            {
+                try_continue_book();
+            }
+            else if (menu_option == option_quit)
+            {
+                return 0;
+            }
+            else
+            {
+                static quickrdr_state_t option_to_state[] = {
+                    [option_open] = state_book_list,
+                    [option_settings] = state_settings,
+                    [option_about] = state_about,
+                };
+                state = option_to_state[menu_option];
+            }
+        }
+    }
+    else if (state == state_book_list)
+    {
     }
     return 1;
 }
@@ -146,14 +159,16 @@ static void draw(void)
         // top & bottom bar
         gfx_SetColor(COLOR_BAR_BG);
         gfx_FillRectangle_NoClip(0, 0, 320, 240);
+        // top bar text
         gfx_SetTextFGColor(COLOR_BAR_TEXT);
         gfx_SetTextBGColor(COLOR_BAR_BG);
-        // top bar text
         gfx_PrintStringXY("QUICKRDR", 8, 8);
         get_time(buf);
         gfx_GetStringWidth(buf);
         gfx_SetTextXY(320 - gfx_GetStringWidth(buf) - 8, 8);
         gfx_PrintString(buf);
+        // bottom bar text
+        gfx_PrintStringXY("[\x1e\x1f] Navigate [ENTER] Select [CLEAR] Quit", 8, 226);
         // main menu
         gfx_SetColor(COLOR_MAIN_BG);
         gfx_FillRectangle_NoClip(0, 24, 320, 196);
@@ -177,6 +192,19 @@ static void draw(void)
             }
         }
     }
+    else if (state == state_book_list)
+    {
+        gfx_ZeroScreen();
+        gfx_SetTextScale(2, 2);
+        for (int x = 0; x < 16; x++)
+        {
+            for (int y = 0; y < 8; y++)
+            {
+                gfx_SetTextXY(x * 16, y * 16);
+                gfx_PrintChar(y * 16 + x);
+            }
+        }
+    }
 }
 
 int main()
@@ -185,7 +213,6 @@ int main()
     gfx_SetDrawBuffer();
     gfx_SetPalette(quickrdr_palette, sizeof(quickrdr_palette), 0);
     gfx_ZeroScreen();
-    last_kb = clock();
 
     while (step())
     {
