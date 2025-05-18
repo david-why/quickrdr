@@ -55,8 +55,10 @@ static quickrdr_option_t menu_option = option_open;
 #define book_list_perpage 6
 static quickrdr_book_t book_list_entries[book_list_perpage];
 static unsigned int book_list_page;
+static unsigned int book_list_total_count;
 static uint8_t book_list_count;
 static uint8_t book_list_loaded;
+static uint8_t book_list_chosen;
 
 static void get_time(char *output)
 {
@@ -182,18 +184,70 @@ static int step(void)
                 book_list_page = 0;
                 book_list_count = 0;
                 book_list_loaded = 0;
+                book_list_chosen = 0;
             }
         }
         else if (key == sk_Vars)
         {
             state = state_test;
         }
+        else if (key == sk_Prgm)
+        {
+            // make a test book
+            quickrdr_header_t book_header;
+            memcpy(book_header.magic, "QRDR", sizeof(book_header.magic));
+            book_header.version = 1;
+            book_header.min_extension_byte = 0x7f;
+            book_header.line_height = 16;
+            book_header.font_glyphs_count = 1;
+            book_header.font_glyphs_offset = sizeof(book_header);
+            quickrdr_glyph_t *glyph = malloc(sizeof(quickrdr_glyph_t) + 8);
+            glyph->glyph_id = 1;
+            glyph->width = 8;
+            glyph->height = 8;
+            glyph->data_size = 8;
+            glyph->data[0] = 0b10000000;
+            glyph->data[1] = 0b01000000;
+            glyph->data[2] = 0b00100000;
+            glyph->data[3] = 0b00010000;
+            glyph->data[4] = 0b00001000;
+            glyph->data[5] = 0b00000100;
+            glyph->data[6] = 0b00000010;
+            glyph->data[7] = 0b00000001;
+            char *filename = "TESTBOOK";
+            uint8_t book_data[] = {1, 1, 1, 1, 1};
+            uint8_t var = ti_OpenVar(filename, "w", OS_TYPE_APPVAR);
+            if (var == 0)
+            {
+                show_alert("Failed to create book");
+            } else {
+                ti_Write(&book_header, sizeof(book_header), 1, var);
+                ti_Write(glyph, sizeof(quickrdr_glyph_t) + 8, 1, var);
+                ti_Write(book_data, sizeof(book_data), 1, var);
+                ti_SetArchiveStatus(1, var);
+                ti_Close(var);
+                show_alert("Book created");
+            }
+            free(glyph);
+        }
     }
     else if (state == state_book_list)
     {
-        if (!book_list_loaded)
+        if (key == sk_Clear)
+        {
+            state = state_main;
+        }
+        else if (!book_list_loaded)
         {
             book_list_count = quickrdr_list_files(book_list_entries, book_list_page * book_list_perpage, book_list_perpage);
+            if (book_list_count == 0 && book_list_page != 0)
+            {
+                book_list_page--;
+            }
+            else
+            {
+                book_list_loaded = true;
+            }
         }
     }
     else if (state == state_test)
@@ -255,8 +309,38 @@ static void draw(void)
     {
         // top bar text
         gfx_PrintStringXY("QUICKRDR: Open Book", 8, 8);
+        sprintf(buf, "%u-%u of %u", book_list_page * book_list_perpage + 1, book_list_page * book_list_perpage + book_list_count, book_list_total_count);
+        unsigned int width = gfx_GetStringWidth(buf);
+        gfx_PrintStringXY(buf, 320 - width - 8, 8);
         // bottom bar text
         gfx_PrintStringXY("[\x1e\x1f] Item [\x11\x10] Page [ENTER] Open [CLEAR] Back", 8, 226);
+        if (!book_list_loaded)
+        {
+            gfx_SetTextFGColor(COLOR_MAIN_TEXT);
+            gfx_SetTextBGColor(COLOR_MAIN_BG);
+            gfx_PrintStringXY("Loading...", 8, 36);
+        }
+        else if (book_list_count == 0)
+        {
+            gfx_SetTextFGColor(COLOR_MAIN_TEXT);
+            gfx_SetTextBGColor(COLOR_MAIN_BG);
+            gfx_PrintStringXY("No books found", 8, 36);
+        }
+        else
+        {
+            for (int i = 0; i < book_list_count; i++)
+            {
+                gfx_SetColor(book_list_chosen == i ? COLOR_HIGHLIGHT_BG : COLOR_MAIN_BG);
+                gfx_FillRectangle_NoClip(0, 30 + i * 32, 320, 20);
+                gfx_SetTextFGColor(book_list_chosen == i ? COLOR_HIGHLIGHT_TEXT : COLOR_MAIN_TEXT);
+                gfx_SetTextBGColor(book_list_chosen == i ? COLOR_HIGHLIGHT_BG : COLOR_MAIN_BG);
+                gfx_PrintStringXY(book_list_entries[i].name, 24, 36 + i * 32);
+                if (book_list_chosen == i)
+                {
+                    gfx_PrintStringXY(">", 8, 36 + i * 32);
+                }
+            }
+        }
     }
     else if (state == state_test)
     {
@@ -275,6 +359,9 @@ int main()
     gfx_SetDrawBuffer();
     gfx_SetPalette(quickrdr_palette, sizeof(quickrdr_palette), 0);
     gfx_ZeroScreen();
+
+    // load the total count
+    book_list_total_count = quickrdr_count_files();
 
     while (step())
     {

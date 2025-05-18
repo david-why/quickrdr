@@ -4,10 +4,10 @@
 
 #include <string.h>
 
-char *find_next_appvar(void **search_pos)
+static char *find_next_appvar(void **search_pos)
 {
     char *detected_name;
-    while (detected_name = ti_DetectVar(search_pos, NULL, OS_TYPE_APPVAR))
+    while ((detected_name = ti_DetectVar(search_pos, NULL, OS_TYPE_APPVAR)))
     {
         static char buf[4];
         uint8_t var = ti_OpenVar(detected_name, "r", OS_TYPE_APPVAR);
@@ -40,6 +40,17 @@ unsigned int quickrdr_list_files(quickrdr_book_t *book_list, unsigned int offset
             return i;
         }
         strncpy(book_list[i].name, detected_name, sizeof(book_list[i].name));
+    }
+    return count;
+}
+
+unsigned int quickrdr_count_files(void)
+{
+    void *search_pos = NULL;
+    unsigned int count = 0;
+    while (find_next_appvar(&search_pos))
+    {
+        count++;
     }
     return count;
 }

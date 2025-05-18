@@ -10,8 +10,6 @@ typedef struct
     uint8_t line_height; // distance from baseline to baseline
     uint24_t font_glyphs_count;
     uint16_t font_glyphs_offset;
-    uint8_t appvars_count;
-    uint16_t appvars_offset;
 } quickrdr_header_t;
 
 typedef struct
@@ -34,3 +32,4 @@ typedef struct
 } quickrdr_book_t;
 
 unsigned int quickrdr_list_files(quickrdr_book_t *book_list, unsigned int offset, unsigned int count);
+unsigned int quickrdr_count_files(void);
