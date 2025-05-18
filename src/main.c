@@ -34,6 +34,7 @@ typedef enum
     state_settings,
     state_about,
     state_book_list,
+    state_test,
     state_count
 } quickrdr_state_t;
 
@@ -47,17 +48,15 @@ typedef enum
     option_count
 } quickrdr_option_t;
 
-typedef struct
-{
-    char name[9];
-} quickrdr_book_t;
-
 static quickrdr_state_t state = state_main;
 // state_main
 static quickrdr_option_t menu_option = option_open;
 // state_book_list
-static quickrdr_book_t book_list_entries[6];
-static int book_list_page;
+#define book_list_perpage 6
+static quickrdr_book_t book_list_entries[book_list_perpage];
+static unsigned int book_list_page;
+static uint8_t book_list_count;
+static uint8_t book_list_loaded;
 
 static void get_time(char *output)
 {
@@ -98,7 +97,45 @@ static void get_time(char *output)
     output[8] = '\0';
 }
 
-static void try_continue_book(void) {}
+static inline uint8_t getcsc()
+{
+    uint8_t key;
+    while ((key = os_GetCSC()) == 0)
+    {
+    }
+    return key;
+}
+
+// SINGLE LINE ONLY!!!
+static void show_alert(const char *message)
+{
+    unsigned int width = gfx_GetStringWidth(message);
+    if (width > 320)
+    {
+        width = 320;
+    }
+    unsigned int x = (320 - width) / 2;
+    unsigned int boxX = x < 8 ? x : x - 8;
+    gfx_BlitScreen();
+    gfx_SetColor(COLOR_BAR_BG);
+    gfx_FillRectangle(boxX, 100, 320 - boxX - boxX, 40);
+    gfx_SetTextFGColor(COLOR_BAR_TEXT);
+    gfx_SetTextBGColor(COLOR_BAR_BG);
+    gfx_PrintStringXY(message, x, 116);
+    gfx_SwapDraw();
+    getcsc();
+}
+
+static void try_continue_book(void)
+{
+    void *search_pos = NULL;
+    char *detected_name = ti_DetectVar(&search_pos, "QKRDR", OS_TYPE_APPVAR);
+    if (detected_name == NULL)
+    {
+        show_alert("No book found");
+        return;
+    }
+}
 
 static int step(void)
 {
@@ -109,7 +146,7 @@ static int step(void)
         {
             return 0;
         }
-        if (key == sk_Up)
+        else if (key == sk_Up)
         {
             if (menu_option == 0)
             {
@@ -117,14 +154,14 @@ static int step(void)
             }
             menu_option--;
         }
-        if (key == sk_Down)
+        else if (key == sk_Down)
         {
             if (++menu_option >= option_count)
             {
                 menu_option = 0;
             }
         }
-        if (key == sk_Enter)
+        else if (key == sk_Enter)
         {
             if (menu_option == option_continue)
             {
@@ -142,11 +179,36 @@ static int step(void)
                     [option_about] = state_about,
                 };
                 state = option_to_state[menu_option];
+                book_list_page = 0;
+                book_list_count = 0;
+                book_list_loaded = 0;
             }
+        }
+        else if (key == sk_Vars)
+        {
+            state = state_test;
         }
     }
     else if (state == state_book_list)
     {
+        if (!book_list_loaded)
+        {
+            book_list_count = quickrdr_list_files(book_list_entries, book_list_page * book_list_perpage, book_list_perpage);
+        }
+    }
+    else if (state == state_test)
+    {
+        if (key == sk_Clear)
+        {
+            state = state_main;
+        }
+    }
+    else if (state == state_settings || state == state_about)
+    {
+        if (key == sk_Clear)
+        {
+            state = state_main;
+        }
     }
     return 1;
 }
@@ -154,24 +216,21 @@ static int step(void)
 static void draw(void)
 {
     static char buf[32];
+    // top & bottom bar
+    gfx_SetColor(COLOR_BAR_BG);
+    gfx_FillRectangle_NoClip(0, 0, 320, 240);
+    // main menu
+    gfx_SetColor(COLOR_MAIN_BG);
+    gfx_FillRectangle_NoClip(0, 24, 320, 196);
+    // top & bottom bar text
+    gfx_SetTextFGColor(COLOR_BAR_TEXT);
+    gfx_SetTextBGColor(COLOR_BAR_BG);
     if (state == state_main)
     {
-        // top & bottom bar
-        gfx_SetColor(COLOR_BAR_BG);
-        gfx_FillRectangle_NoClip(0, 0, 320, 240);
         // top bar text
-        gfx_SetTextFGColor(COLOR_BAR_TEXT);
-        gfx_SetTextBGColor(COLOR_BAR_BG);
         gfx_PrintStringXY("QUICKRDR", 8, 8);
-        get_time(buf);
-        gfx_GetStringWidth(buf);
-        gfx_SetTextXY(320 - gfx_GetStringWidth(buf) - 8, 8);
-        gfx_PrintString(buf);
         // bottom bar text
         gfx_PrintStringXY("[\x1e\x1f] Navigate [ENTER] Select [CLEAR] Quit", 8, 226);
-        // main menu
-        gfx_SetColor(COLOR_MAIN_BG);
-        gfx_FillRectangle_NoClip(0, 24, 320, 196);
         static const char *menu_items[] = {
             [option_open] = "Open Book",
             [option_continue] = "Continue Reading",
@@ -194,16 +253,19 @@ static void draw(void)
     }
     else if (state == state_book_list)
     {
-        gfx_ZeroScreen();
-        gfx_SetTextScale(2, 2);
-        for (int x = 0; x < 16; x++)
-        {
-            for (int y = 0; y < 8; y++)
+        // top bar text
+        gfx_PrintStringXY("QUICKRDR: Open Book", 8, 8);
+        // bottom bar text
+        gfx_PrintStringXY("[\x1e\x1f] Item [\x11\x10] Page [ENTER] Open [CLEAR] Back", 8, 226);
+    }
+    else if (state == state_test)
+    {
+        for (int i = 0; i < 8; i++)
+            for (int j = 0; j < 16; j++)
             {
-                gfx_SetTextXY(x * 16, y * 16);
-                gfx_PrintChar(y * 16 + x);
+                gfx_SetTextXY(j * 8, i * 8);
+                gfx_PrintChar(i * 16 + j);
             }
-        }
     }
 }
 

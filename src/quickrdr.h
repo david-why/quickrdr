@@ -14,7 +14,8 @@ typedef struct
     uint16_t appvars_offset;
 } quickrdr_header_t;
 
-typedef struct {
+typedef struct
+{
     uint16_t glyph_id;
     uint8_t width;
     uint8_t height;
@@ -22,6 +23,14 @@ typedef struct {
     uint8_t data[0]; // bitmap data
 } quickrdr_glyph_t;
 
-typedef struct {
-    char name[8];
+typedef struct
+{
+    char name[9];
 } quickrdr_appvar_t;
+
+typedef struct
+{
+    char name[9];
+} quickrdr_book_t;
+
+unsigned int quickrdr_list_files(quickrdr_book_t *book_list, unsigned int offset, unsigned int count);
