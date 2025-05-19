@@ -59,6 +59,12 @@ static unsigned int book_list_total_count;
 static uint8_t book_list_count;
 static uint8_t book_list_loaded;
 static uint8_t book_list_chosen;
+// state_reading
+static quickrdr_book_handle_t reading_book;
+static uint24_t reading_page;
+static uint8_t *reading_page_data;
+static uint24_t reading_page_size;
+// static quickrdr_glyph_t *reading_glyphs; // array
 
 static void get_time(char *output)
 {
@@ -181,10 +187,6 @@ static int step(void)
                     [option_about] = state_about,
                 };
                 state = option_to_state[menu_option];
-                book_list_page = 0;
-                book_list_count = 0;
-                book_list_loaded = 0;
-                book_list_chosen = 0;
             }
         }
         else if (key == sk_Vars)
@@ -197,15 +199,18 @@ static int step(void)
             quickrdr_header_t book_header;
             memcpy(book_header.magic, "QRDR", sizeof(book_header.magic));
             book_header.version = 1;
-            book_header.min_extension_byte = 0x7f;
+            strcpy(book_header.name, "Test Book");
+            book_header.total_size = sizeof(book_header) + sizeof(quickrdr_glyph_t) + 8 + 5;
+            book_header.min_extension_byte = 0;
             book_header.line_height = 16;
-            book_header.font_glyphs_count = 1;
-            book_header.font_glyphs_offset = sizeof(book_header);
+            book_header.font_glyph_count = 1;
+            book_header.font_glyph_size = 8;
+            book_header.page_count = 1;
+            uint24_t page_offset = sizeof(book_header) + sizeof(quickrdr_glyph_t) + 8;
             quickrdr_glyph_t *glyph = malloc(sizeof(quickrdr_glyph_t) + 8);
             glyph->glyph_id = 1;
             glyph->width = 8;
             glyph->height = 8;
-            glyph->data_size = 8;
             glyph->data[0] = 0b10000000;
             glyph->data[1] = 0b01000000;
             glyph->data[2] = 0b00100000;
@@ -215,15 +220,18 @@ static int step(void)
             glyph->data[6] = 0b00000010;
             glyph->data[7] = 0b00000001;
             char *filename = "TESTBOOK";
-            uint8_t book_data[] = {1, 1, 1, 1, 1};
-            uint8_t var = ti_OpenVar(filename, "w", OS_TYPE_APPVAR);
+            uint8_t page_data[] = {1, 1, 1, 1, 1};
+            uint8_t var = ti_Open(filename, "w");
             if (var == 0)
             {
                 show_alert("Failed to create book");
-            } else {
+            }
+            else
+            {
                 ti_Write(&book_header, sizeof(book_header), 1, var);
+                ti_Write(&page_offset, sizeof(page_offset), 1, var);
                 ti_Write(glyph, sizeof(quickrdr_glyph_t) + 8, 1, var);
-                ti_Write(book_data, sizeof(book_data), 1, var);
+                ti_Write(page_data, sizeof(page_data), 1, var);
                 ti_SetArchiveStatus(1, var);
                 ti_Close(var);
                 show_alert("Book created");
@@ -236,8 +244,49 @@ static int step(void)
         if (key == sk_Clear)
         {
             state = state_main;
+            book_list_loaded = 0;
+            book_list_chosen = 0;
+            book_list_page = 0;
         }
-        else if (!book_list_loaded)
+        else if (key == sk_Enter)
+        {
+            if (book_list_count != 0)
+            {
+                state = state_reading;
+            }
+        }
+        else if (key == sk_Left)
+        {
+            if (book_list_page > 0)
+            {
+                book_list_page--;
+                book_list_loaded = false;
+            }
+        }
+        else if (key == sk_Right)
+        {
+            if (book_list_page * book_list_perpage + book_list_count < book_list_total_count)
+            {
+                book_list_page++;
+                book_list_loaded = false;
+            }
+        }
+        else if (key == sk_Up)
+        {
+            if (book_list_chosen == 0)
+            {
+                book_list_chosen = book_list_count;
+            }
+            book_list_chosen--;
+        }
+        else if (key == sk_Down)
+        {
+            if (++book_list_chosen >= book_list_count)
+            {
+                book_list_chosen = 0;
+            }
+        }
+        if (!book_list_loaded)
         {
             book_list_count = quickrdr_list_files(book_list_entries, book_list_page * book_list_perpage, book_list_perpage);
             if (book_list_count == 0 && book_list_page != 0)
@@ -248,6 +297,36 @@ static int step(void)
             {
                 book_list_loaded = true;
             }
+        }
+    }
+    else if (state == state_reading)
+    {
+        if (key == sk_Clear)
+        {
+            state = state_main;
+        }
+        if (reading_book == NULL)
+        {
+            // TODO Open book
+            reading_book = quickrdr_open_book(book_list_entries[book_list_chosen].filename);
+            if (reading_book == NULL)
+            {
+                show_alert("Failed to open book");
+                state = state_main;
+                return 1;
+            }
+        }
+        if (reading_page_data == NULL)
+        {
+            reading_page_size = quickrdr_get_page_size(reading_book, reading_page);
+            reading_page_data = malloc(reading_page_size);
+            if (reading_page_data == NULL)
+            {
+                show_alert("Failed to allocate memory");
+                state = state_main;
+                return 1;
+            }
+            quickrdr_read_page(reading_book, reading_page, reading_page_data);
         }
     }
     else if (state == state_test)
@@ -341,6 +420,9 @@ static void draw(void)
                 }
             }
         }
+    }
+    else if (state == state_reading)
+    {
     }
     else if (state == state_test)
     {

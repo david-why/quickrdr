@@ -7,6 +7,7 @@ ICON = icon.png
 DESCRIPTION = "E-Book reader"
 COMPRESSED = NO
 ARCHIVED = YES
+OUTPUT_MAP = NO
 
 HAS_PRINTF = NO
 
