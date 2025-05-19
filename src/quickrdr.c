@@ -1,15 +1,9 @@
 #include "quickrdr.h"
 
 #include <fileioc.h>
+#include <debug.h>
 
 #include <string.h>
-
-struct quickrdr_book_handle
-{
-    quickrdr_header_t header;
-    uint8_t var;
-    uint24_t current_var;
-};
 
 static char *find_next_appvar(void **search_pos)
 {
@@ -88,11 +82,12 @@ static int book_seek(quickrdr_book_handle_t book, uint24_t offset)
         book->var = ti_Open(name, "r");
         if (book->var == 0)
         {
+            dbg_printf("Failed to open book var %s\n", name);
             return EOF;
         }
         book->current_var = offset / 65536;
     }
-    return ti_Seek(offset % 65536, SEEK_CUR, book->var);
+    return ti_Seek(offset % 65536, SEEK_SET, book->var);
 }
 
 static size_t book_read(quickrdr_book_handle_t book, void *buf, size_t size)
@@ -100,7 +95,7 @@ static size_t book_read(quickrdr_book_handle_t book, void *buf, size_t size)
     size_t read = 0;
     while (size)
     {
-        size_t this_read = ti_Read(buf + read, 1, size, book->var);
+        size_t this_read = ti_Read(buf + read, 1, size - read, book->var);
         if (!this_read)
         {
             return read;
@@ -116,30 +111,36 @@ quickrdr_book_handle_t quickrdr_open_book(const char *filename)
     size_t len = strlen(filename);
     if (len < 3 || strcmp(filename + len - 2, "00") != 0)
     {
+        dbg_printf("Filename %s does not end with 00\n", filename);
         return NULL;
     }
     quickrdr_book_handle_t book = malloc(sizeof(struct quickrdr_book_handle));
     if (book == NULL)
     {
+        dbg_printf("Failed to allocate memory for book handle\n");
         return NULL;
     }
     book->var = ti_Open(filename, "r");
     if (book->var == 0)
     {
+        dbg_printf("Failed to open book var %s\n", filename);
         goto err_free;
     }
     ti_Seek(0, SEEK_SET, book->var);
     size_t read = book_read(book, &book->header, sizeof(book->header));
     if (read != sizeof(book->header))
     {
+        dbg_printf("Read failed, read %u bytes\n", read);
         goto err_close;
     }
     if (memcmp(book->header.magic, "QRDR", 4) != 0)
     {
+        dbg_printf("Invalid magic data\n");
         goto err_close;
     }
     if (book->header.version != 1)
     {
+        dbg_printf("Invalid version %u\n", book->header.version);
         goto err_close;
     }
     book->current_var = 0;
@@ -167,19 +168,20 @@ static uint24_t book_calculate_glyph_offset(quickrdr_book_handle_t book, uint16_
 {
     if (glyph_id < 256U)
     {
-        return sizeof(book->header) + book->header.page_count * sizeof(uint24_t) + glyph_id * book->header.font_glyph_size;
+        return sizeof(book->header) + book->header.page_count * sizeof(uint24_t) + (glyph_id - 1) * book->header.font_glyph_size;
     }
     else
     {
         // two byte glyphs
         uint8_t extension_byte = glyph_id >> 8;
-        return sizeof(book->header) + book->header.page_count * sizeof(uint24_t) + (book->header.min_extension_byte + extension_byte) * 256U * book->header.font_glyph_size + (glyph_id & 0xFF) * book->header.font_glyph_size;
+        return sizeof(book->header) + book->header.page_count * sizeof(uint24_t) + (book->header.min_extension_byte + extension_byte) * 256U * book->header.font_glyph_size + ((glyph_id & 0xFF) - 1) * book->header.font_glyph_size;
     }
 }
 
 uint8_t quickrdr_read_glyph(quickrdr_book_handle_t book, uint16_t glyph_id, quickrdr_glyph_t *glyph)
 {
     uint24_t offset = book_calculate_glyph_offset(book, glyph_id);
+    dbg_printf("Reading glyph %u, offset %u\n", glyph_id, offset);
     if (book_seek(book, offset) == EOF)
     {
         return 0;
@@ -197,15 +199,17 @@ uint8_t quickrdr_read_glyph(quickrdr_book_handle_t book, uint16_t glyph_id, quic
     return 1;
 }
 
-uint24_t quickrdr_get_page_size(quickrdr_book_handle_t book, uint24_t page)
+uint24_t quickrdr_get_page_size(quickrdr_book_handle_t book, uint24_t page, uint24_t *offset_out)
 {
     if (page >= book->header.page_count)
     {
+        dbg_printf("Page %u out of bounds\n", page);
         return 0;
     }
     uint24_t offset = sizeof(quickrdr_header_t) + page * sizeof(uint24_t);
     if (book_seek(book, offset) == EOF)
     {
+        dbg_printf("Failed to seek to page %u\n", page);
         return 0;
     }
     uint24_t page_offset;
@@ -213,10 +217,16 @@ uint24_t quickrdr_get_page_size(quickrdr_book_handle_t book, uint24_t page)
     size_t read = book_read(book, &page_offset, sizeof(page_offset));
     if (read != sizeof(page_offset))
     {
+        dbg_printf("Failed to read page offset for %u\n", page);
         return 0;
     }
     if (page == book->header.page_count - 1)
     {
+        dbg_printf("Last page %u, offset %u, total size %u\n", page, page_offset, book->header.total_size);
+        if (offset_out)
+        {
+            *offset_out = page_offset;
+        }
         return book->header.total_size - page_offset;
     }
     uint24_t next_page_offset;
@@ -235,12 +245,17 @@ uint24_t quickrdr_get_page_size(quickrdr_book_handle_t book, uint24_t page)
     {
         return 0;
     }
+    if (offset_out)
+    {
+        *offset_out = page_offset;
+    }
     return size;
 }
 
 uint24_t quickrdr_read_page(quickrdr_book_handle_t book, uint24_t page, uint8_t *data)
 {
-    size_t size = quickrdr_get_page_size(book, page);
+    uint24_t page_offset;
+    size_t size = quickrdr_get_page_size(book, page, &page_offset);
     if (size == 0)
     {
         return 0;
@@ -249,8 +264,8 @@ uint24_t quickrdr_read_page(quickrdr_book_handle_t book, uint24_t page, uint8_t 
     {
         return 0;
     }
-    uint24_t offset = sizeof(quickrdr_header_t) + book->header.page_count * sizeof(uint24_t) + page * book->header.line_height;
-    if (book_seek(book, offset) == EOF)
+    dbg_printf("Reading page %u, offset %u, size %u\n", page, page_offset, size);
+    if (book_seek(book, page_offset) == EOF)
     {
         return 0;
     }

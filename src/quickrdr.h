@@ -32,7 +32,12 @@ typedef struct
     char name[16];
 } quickrdr_book_t;
 
-struct quickrdr_book_handle;
+struct quickrdr_book_handle
+{
+    quickrdr_header_t header;
+    uint8_t var;
+    uint24_t current_var;
+};
 typedef struct quickrdr_book_handle *quickrdr_book_handle_t;
 
 unsigned int quickrdr_list_files(quickrdr_book_t *book_list, unsigned int offset, unsigned int count);
@@ -44,6 +49,6 @@ void quickrdr_close_book(quickrdr_book_handle_t book);
  * @returns 1 on success, 0 on failure
  */
 uint8_t quickrdr_read_glyph(quickrdr_book_handle_t book, uint16_t glyph_id, quickrdr_glyph_t *glyph);
-uint24_t quickrdr_get_page_size(quickrdr_book_handle_t book, uint24_t page);
+uint24_t quickrdr_get_page_size(quickrdr_book_handle_t book, uint24_t page, uint24_t *offset_out);
 uint24_t quickrdr_read_page(quickrdr_book_handle_t book, uint24_t page, uint8_t *data);
 uint8_t quickrdr_next_char(quickrdr_book_handle_t book, uint8_t *data, uint16_t *glyph_id);
