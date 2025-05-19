@@ -68,7 +68,7 @@ static uint24_t reading_page;
 static uint8_t *reading_page_data;
 static uint24_t reading_page_size;
 // static quickrdr_glyph_t *reading_glyphs; // array
-static uint8_t should_redraw = 1;
+static uint8_t partial_redraw = 1;
 
 static void get_time(char *output)
 {
@@ -138,20 +138,44 @@ static void show_alert(const char *message)
     getcsc();
 }
 
+typedef struct
+{
+    char filename[10];
+    uint24_t page;
+} quickrdr_save_t;
+
 static void try_continue_book(void)
 {
-    void *search_pos = NULL;
-    char *detected_name = ti_DetectVar(&search_pos, "QKRDR", OS_TYPE_APPVAR);
-    if (detected_name == NULL)
+    uint8_t var = ti_Open("QKRDSAVE", "r");
+    if (var == 0)
     {
         show_alert("No book found");
         return;
     }
+    quickrdr_save_t save;
+    if (!ti_Read(&save, sizeof(save), 1, var))
+    {
+        show_alert("Failed to read save");
+        ti_Close(var);
+        return;
+    }
+    ti_Close(var);
+    reading_book = quickrdr_open_book(save.filename);
+    if (reading_book == NULL)
+    {
+        show_alert("Failed to open book");
+        state = state_main;
+        return;
+    }
+    state = state_reading;
+    reading_page = save.page;
+    reading_page_data = NULL;
 }
 
 static int step(void)
 {
     uint8_t key = os_GetCSC();
+    partial_redraw = 0;
     if (state == state_main)
     {
         if (key == sk_Clear)
@@ -253,6 +277,7 @@ static int step(void)
             book_list_loaded = 0;
             book_list_chosen = 0;
             book_list_page = 0;
+            return 1;
         }
         else if (key == sk_Enter)
         {
@@ -269,6 +294,7 @@ static int step(void)
                 book_list_page--;
                 book_list_loaded = false;
             }
+            return 1;
         }
         else if (key == sk_Right)
         {
@@ -277,6 +303,7 @@ static int step(void)
                 book_list_page++;
                 book_list_loaded = false;
             }
+            return 1;
         }
         else if (key == sk_Up)
         {
@@ -332,6 +359,8 @@ static int step(void)
                     free(reading_page_data);
                     reading_page_data = NULL;
                 }
+                partial_redraw = 1;
+                return 1;
             }
         }
         else if (key == sk_Right)
@@ -344,6 +373,8 @@ static int step(void)
                     free(reading_page_data);
                     reading_page_data = NULL;
                 }
+                partial_redraw = 1;
+                return 1;
             }
         }
         if (reading_page_data == NULL)
@@ -359,10 +390,20 @@ static int step(void)
             }
             quickrdr_read_page(reading_book, reading_page, reading_page_data);
             dbg_printf("Page data[0]: %u\n", reading_page_data[0]);
+            uint8_t var = ti_Open("QKRDSAVE", "w");
+            if (var != 0)
+            {
+                quickrdr_save_t save;
+                quickrdr_get_book_filename(reading_book, save.filename);
+                save.page = reading_page;
+                ti_Write(&save, sizeof(save), 1, var);
+                ti_SetArchiveStatus(1, var);
+                ti_Close(var);
+            }
         }
         else
         {
-            should_redraw = 0;
+            partial_redraw = 1;
         }
     }
     else if (state == state_test)
@@ -385,12 +426,15 @@ static int step(void)
 static void draw(void)
 {
     static char buf[32];
-    // top & bottom bar
-    gfx_SetColor(COLOR_BAR_BG);
-    gfx_FillRectangle_NoClip(0, 0, 320, 240);
-    // main menu
-    gfx_SetColor(COLOR_MAIN_BG);
-    gfx_FillRectangle_NoClip(0, 24, 320, 196);
+    if (!partial_redraw)
+    {
+        // top & bottom bar
+        gfx_SetColor(COLOR_BAR_BG);
+        gfx_FillRectangle_NoClip(0, 0, 320, 240);
+        // main menu
+        gfx_SetColor(COLOR_MAIN_BG);
+        gfx_FillRectangle_NoClip(0, 24, 320, 196);
+    }
     // top & bottom bar text
     gfx_SetTextFGColor(COLOR_BAR_TEXT);
     gfx_SetTextBGColor(COLOR_BAR_BG);
@@ -463,17 +507,17 @@ static void draw(void)
     else if (state == state_reading)
     {
         // top bar text
-        gfx_PrintStringXY("QUICKRDR: Reading", 8, 8);
-        // get_time(buf);
-        // unsigned int width = gfx_GetStringWidth(buf);
-        // gfx_PrintStringXY(buf, 320 - width - 8, 8);
-        // bottom bar text
-        gfx_PrintStringXY("[\x11\x10] Page [CLEAR] Back", 8, 226);
-        gfx_SetTextFGColor(COLOR_MAIN_TEXT);
-        gfx_SetTextBGColor(COLOR_MAIN_BG);
-        gfx_SetTextXY(8, 32);
+        gfx_PrintStringXY(reading_book->header.name, 8, 8);
         if (reading_page_data != NULL)
         {
+            sprintf(buf, "Page %u/%u", reading_page + 1, reading_book->header.page_count);
+            unsigned int width = gfx_GetStringWidth(buf);
+            gfx_PrintStringXY(buf, 320 - width - 8, 8);
+            // bottom bar text
+            gfx_PrintStringXY("[\x11\x10] Page [CLEAR] Back", 8, 226);
+            gfx_SetTextFGColor(COLOR_MAIN_TEXT);
+            gfx_SetTextBGColor(COLOR_MAIN_BG);
+            gfx_SetTextXY(8, 32);
             uint8_t *data = reading_page_data;
             quickrdr_glyph_t *glyph = malloc(reading_book->header.font_glyph_size);
             if (glyph == NULL)
@@ -514,6 +558,12 @@ static void draw(void)
             }
             free(glyph);
         }
+        else
+        {
+            strcpy(buf, "Loading...");
+            unsigned int width = gfx_GetStringWidth(buf);
+            gfx_PrintStringXY(buf, 320 - width - 8, 8);
+        }
     }
     else if (state == state_settings)
     {
@@ -552,13 +602,13 @@ int main()
 
     while (step())
     {
-        dbg_printf("State: %u, should redraw: %u\n", state, should_redraw);
-        if (should_redraw)
+        dbg_printf("State: %u, partial redraw: %u\n", state, partial_redraw);
+        if (partial_redraw)
         {
-            draw();
-            gfx_SwapDraw();
+            gfx_BlitScreen();
         }
-        should_redraw = 1;
+        draw();
+        gfx_SwapDraw();
     }
 
     gfx_End();

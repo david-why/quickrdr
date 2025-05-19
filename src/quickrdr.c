@@ -291,3 +291,17 @@ uint8_t quickrdr_next_char(quickrdr_book_handle_t book, uint8_t *data, uint16_t 
         return 1;
     }
 }
+
+void quickrdr_get_book_filename(quickrdr_book_handle_t book, char *filename)
+{
+    if (book == NULL)
+    {
+        filename[0] = '\0';
+        return;
+    }
+    ti_GetName(filename, book->var);
+    size_t len = strlen(filename);
+    filename[len - 2] = '0';
+    filename[len - 1] = '0';
+    filename[len] = '\0';
+}

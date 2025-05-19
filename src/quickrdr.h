@@ -52,3 +52,4 @@ uint8_t quickrdr_read_glyph(quickrdr_book_handle_t book, uint16_t glyph_id, quic
 uint24_t quickrdr_get_page_size(quickrdr_book_handle_t book, uint24_t page, uint24_t *offset_out);
 uint24_t quickrdr_read_page(quickrdr_book_handle_t book, uint24_t page, uint8_t *data);
 uint8_t quickrdr_next_char(quickrdr_book_handle_t book, uint8_t *data, uint16_t *glyph_id);
+void quickrdr_get_book_filename(quickrdr_book_handle_t book, char *filename);
