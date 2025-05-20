@@ -30,6 +30,8 @@
 
 #define getbit(array, index) ((array)[(index) / 8] & (1 << (7 - ((index) % 8))))
 
+#define VERSION "1.0"
+
 typedef enum
 {
     state_main = 0,
@@ -53,7 +55,7 @@ typedef enum
 
 static quickrdr_state_t state = state_main;
 // state_main
-static quickrdr_option_t menu_option = option_open;
+static quickrdr_option_t menu_option = option_settings;
 // state_book_list
 #define book_list_perpage 6
 static quickrdr_book_t book_list_entries[book_list_perpage];
@@ -463,6 +465,12 @@ static void draw(void)
                 gfx_PrintStringXY(">", 8, 36 + i * 32);
             }
         }
+#ifdef DEBUG
+        gfx_PrintStringXY("Memory: ", 8, 204);
+        void *ptr;
+        size_t mem = os_MemChk(&ptr);
+        gfx_PrintUInt(mem, 8);
+#endif
     }
     else if (state == state_book_list)
     {
@@ -570,14 +578,33 @@ static void draw(void)
         // top bar text
         gfx_PrintStringXY("QUICKRDR: Settings", 8, 8);
         // bottom bar text
-        gfx_PrintStringXY("[\x1e\x1f] Item [ENTER] Select [CLEAR] Back", 8, 226);
+        gfx_PrintStringXY("[CLEAR] Back", 8, 226);
+        // main text
+        gfx_SetTextFGColor(COLOR_MAIN_TEXT);
+        gfx_SetTextBGColor(COLOR_MAIN_BG);
+        // gfx_PrintStringXY("Settings", 8, 36);
+        gfx_PrintStringXY("No settings needed. Just read!", 8, 36);
     }
     else if (state == state_about)
     {
         // top bar text
         gfx_PrintStringXY("QUICKRDR: About", 8, 8);
         // bottom bar text
-        gfx_PrintStringXY("[\x1e\x1f] Item [ENTER] Select [CLEAR] Back", 8, 226);
+        gfx_PrintStringXY("[CLEAR] Back", 8, 226);
+        // main text
+        gfx_SetTextFGColor(COLOR_MAIN_TEXT);
+        gfx_SetTextBGColor(COLOR_MAIN_BG);
+        gfx_PrintStringXY("QuickRDR", 8, 36);
+        gfx_PrintStringXY("Version " VERSION, 8, 52);
+        gfx_PrintStringXY("By David Wang (gh: david-why)", 8, 68);
+        gfx_PrintStringXY("QuickRDR is a simple book reader for the", 8, 92);
+        gfx_PrintStringXY("TI-84 Plus CE.", 8, 108);
+        gfx_PrintStringXY("Convert your books at ", 8, 132);
+        int x = gfx_GetTextX();
+        gfx_SetTextFGColor(COLOR_MEDIUM_BLUE);
+        gfx_PrintString("quickrdr.davidwhy.me");
+        gfx_SetColor(COLOR_MEDIUM_BLUE);
+        gfx_HorizLine_NoClip(x, 132 + 8, gfx_GetTextX() - x);
     }
     else if (state == state_test)
     {
