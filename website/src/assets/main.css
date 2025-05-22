@@ -1,0 +1,26 @@
+:root {
+  --color-background: #f0f0f0;
+  --color-text: #323232;
+  --color-bar-background: #3264c8;
+  --color-bar-background-2: #2b4a9c;
+  --color-bar-text: #ffffff;
+  --color-highlight-background: #96b4c8;
+  --color-highlight-text: #ffffff;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--color-background);
+  color: var(--color-text);
+  line-height: 1.6;
+}
+
+.container {
+  max-width: 800px;
+  margin: 2rem auto;
+  padding: 1rem 2rem;
+  background-color: #fff; /* White content background */
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
