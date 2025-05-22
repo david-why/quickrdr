@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 
+#pragma pack(push, 1)
 typedef struct
 {
     char magic[4];              // "QRDR"
@@ -31,6 +32,7 @@ typedef struct
     char filename[9]; // must end in "00"
     char name[16];
 } quickrdr_book_t;
+#pragma pack(pop)
 
 struct quickrdr_book_handle
 {
