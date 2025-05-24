@@ -5,6 +5,8 @@
 
 #include <string.h>
 
+#define CHUNK_SIZE 65460
+
 static char *find_next_appvar(void **search_pos)
 {
     char *detected_name;
@@ -71,23 +73,23 @@ unsigned int quickrdr_count_files(void)
 
 static int book_seek(quickrdr_book_handle_t book, uint24_t offset)
 {
-    if (book->current_var != offset / 65536)
+    if (book->current_var != offset / CHUNK_SIZE)
     {
         char name[10];
         ti_GetName(name, book->var);
         ti_Close(book->var);
         size_t len = strlen(name);
-        name[len - 2] = '0' + (offset / 65536 / 10);
-        name[len - 1] = '0' + (offset / 65536) % 10;
+        name[len - 2] = '0' + (offset / CHUNK_SIZE / 10);
+        name[len - 1] = '0' + (offset / CHUNK_SIZE) % 10;
         book->var = ti_Open(name, "r");
         if (book->var == 0)
         {
             dbg_printf("Failed to open book var %s\n", name);
             return EOF;
         }
-        book->current_var = offset / 65536;
+        book->current_var = offset / CHUNK_SIZE;
     }
-    return ti_Seek(offset % 65536, SEEK_SET, book->var);
+    return ti_Seek(offset % CHUNK_SIZE, SEEK_SET, book->var);
 }
 
 static size_t book_read(quickrdr_book_handle_t book, void *buf, size_t size)
@@ -101,7 +103,7 @@ static size_t book_read(quickrdr_book_handle_t book, void *buf, size_t size)
             return read;
         }
         read += this_read;
-        book_seek(book, book->current_var * 65536 + ti_Tell(book->var));
+        book_seek(book, book->current_var * CHUNK_SIZE + ti_Tell(book->var));
     }
     return read;
 }
@@ -164,17 +166,25 @@ void quickrdr_close_book(quickrdr_book_handle_t book)
     free(book);
 }
 
+#define dbg(var) dbg_printf("%s = %u\n", #var, var)
+
 static uint24_t book_calculate_glyph_offset(quickrdr_book_handle_t book, uint16_t glyph_id)
 {
     if (glyph_id < 256U)
     {
-        return sizeof(book->header) + book->header.page_count * sizeof(uint24_t) + (glyph_id - 1) * book->header.font_glyph_size;
+        return sizeof(book->header) + book->header.page_count * sizeof(uint24_t) +
+               (glyph_id - 1) * book->header.font_glyph_size;
     }
     else
     {
         // two byte glyphs
         uint8_t extension_byte = glyph_id >> 8;
-        return sizeof(book->header) + book->header.page_count * sizeof(uint24_t) + (book->header.min_extension_byte + extension_byte) * 256U * book->header.font_glyph_size + ((glyph_id & 0xFF) - 1) * book->header.font_glyph_size;
+        dbg(book->header.min_extension_byte);
+        dbg(extension_byte);
+        return sizeof(book->header) + book->header.page_count * sizeof(uint24_t) +
+               (book->header.min_extension_byte - 1) * book->header.font_glyph_size +
+               (extension_byte - book->header.min_extension_byte) * 256U * book->header.font_glyph_size +
+               (glyph_id & 0xFF) * book->header.font_glyph_size;
     }
 }
 
@@ -184,22 +194,25 @@ uint8_t quickrdr_read_glyph(quickrdr_book_handle_t book, uint16_t glyph_id, quic
     dbg_printf("Reading glyph %u, offset %u\n", glyph_id, offset);
     if (book_seek(book, offset) == EOF)
     {
+        dbg_printf("Failed to seek to glyph %u\n", glyph_id);
         return 0;
     }
     // size_t read = ti_Read(glyph, sizeof(quickrdr_glyph_t) + book->header.font_glyph_size, 1, book->var);
-    size_t read = book_read(book, glyph, sizeof(quickrdr_glyph_t) + book->header.font_glyph_size);
-    if (read != sizeof(quickrdr_glyph_t) + book->header.font_glyph_size)
+    size_t read = book_read(book, glyph, book->header.font_glyph_size);
+    if (read != book->header.font_glyph_size)
     {
+        dbg_printf("Failed to read glyph %u, read %u bytes\n", glyph_id, read);
         return 0;
     }
     if (glyph->glyph_id != glyph_id)
     {
+        dbg_printf("Glyph ID mismatch, expected %u, got %u\n", glyph_id, glyph->glyph_id);
         return 0;
     }
     return 1;
 }
 
-uint24_t quickrdr_get_page_size(quickrdr_book_handle_t book, uint24_t page, uint24_t *offset_out)
+static uint24_t quickrdr_get_page_offset(quickrdr_book_handle_t book, uint24_t page)
 {
     if (page >= book->header.page_count)
     {
@@ -213,49 +226,39 @@ uint24_t quickrdr_get_page_size(quickrdr_book_handle_t book, uint24_t page, uint
         return 0;
     }
     uint24_t page_offset;
-    // size_t read = ti_Read(&page_offset, sizeof(page_offset), 1, book->var);
     size_t read = book_read(book, &page_offset, sizeof(page_offset));
     if (read != sizeof(page_offset))
     {
         dbg_printf("Failed to read page offset for %u\n", page);
         return 0;
     }
+    return page_offset;
+}
+
+uint24_t quickrdr_get_page_size(quickrdr_book_handle_t book, uint24_t page)
+{
+    uint24_t page_offset = quickrdr_get_page_offset(book, page);
+    if (!page_offset)
+    {
+        return 0;
+    }
     if (page == book->header.page_count - 1)
     {
         dbg_printf("Last page %u, offset %u, total size %u\n", page, page_offset, book->header.total_size);
-        if (offset_out)
-        {
-            *offset_out = page_offset;
-        }
         return book->header.total_size - page_offset;
     }
-    uint24_t next_page_offset;
-    // read = ti_Read(&next_page_offset, sizeof(next_page_offset), 1, book->var);
-    read = book_read(book, &next_page_offset, sizeof(next_page_offset));
-    if (read != sizeof(next_page_offset))
+    uint24_t next_page_offset = quickrdr_get_page_offset(book, page + 1);
+    if (!next_page_offset)
     {
         return 0;
     }
-    uint24_t size = next_page_offset - page_offset;
-    if (size > book->header.line_height)
-    {
-        size = book->header.line_height;
-    }
-    if (size == 0)
-    {
-        return 0;
-    }
-    if (offset_out)
-    {
-        *offset_out = page_offset;
-    }
-    return size;
+    return next_page_offset - page_offset;
 }
 
 uint24_t quickrdr_read_page(quickrdr_book_handle_t book, uint24_t page, uint8_t *data)
 {
-    uint24_t page_offset;
-    size_t size = quickrdr_get_page_size(book, page, &page_offset);
+    uint24_t page_offset = quickrdr_get_page_offset(book, page);
+    size_t size = quickrdr_get_page_size(book, page);
     if (size == 0)
     {
         return 0;

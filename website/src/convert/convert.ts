@@ -37,6 +37,9 @@ export async function convertTextToQuickRDR(options: ConvertOptions): Promise<Ui
   const counter = new Map<string, number>()
   const glyphs = new Map<string, Glyph>()
   for (const char of text) {
+    if (char == '\n') {
+      continue
+    }
     counter.set(char, (counter.get(char) || 0) + 1)
     if (!glyphs.has(char)) {
       const glyph = await font.getGlyph(char)
@@ -45,8 +48,8 @@ export async function convertTextToQuickRDR(options: ConvertOptions): Promise<Ui
       }
     }
   }
+  console.log('glyphs', glyphs)
   const totalGlyphs = glyphs.size
-  // const maxWidth = Math.max(...Array.from(glyphs.values()).map((glyph) => glyph.width))
   const maxHeight = Math.max(...Array.from(glyphs.values()).map((glyph) => glyph.height))
   const lineHeight = maxHeight + lineSpacing
   const sortedChars = Array.from(glyphs.keys()).sort((a, b) => {
@@ -64,18 +67,19 @@ export async function convertTextToQuickRDR(options: ConvertOptions): Promise<Ui
     const id = getGlyphID(i, totalGlyphs)
     quickrdrGlyphs.push(QuickRDRGlyph.from(id, glyph))
   }
-  const tokens = text.split('').map((char) => getGlyphID(sortedChars.indexOf(char), totalGlyphs))
-  const linesPerPage = Math.floor(196 / lineHeight)
+  console.log('quickrdrGlyphs', quickrdrGlyphs)
+  const tokens = text.split('').map((char) => char == '\n' ? 0 : getGlyphID(sortedChars.indexOf(char), totalGlyphs))
+  const linesPerPage = Math.floor(180 / lineHeight)
   const pages = partitionText({
     text: tokens,
     glyphs: quickrdrGlyphs,
     linesPerPage,
-    maxWidth: 320,
+    maxWidth: 304,
   })
   const file = new QuickRDRFile(
     1,
     title,
-    calcMinExtensionByte(tokens.length),
+    calcMinExtensionByte(quickrdrGlyphs.length),
     lineHeight,
     quickrdrGlyphs,
     pages

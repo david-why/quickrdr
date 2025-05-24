@@ -7,9 +7,9 @@ import { font } from '@/convert/font'
 import { convertDataToAppVars } from '@/convert/ti'
 import JSZip from 'jszip'
 
-const file = ref<File | null>(null)
+const file = ref<Blob | null>(new Blob(['abcd'], { type: 'text/plain' }))
 
-const title = ref('')
+const title = ref('test book')
 
 async function convertFile() {
   if (!file.value) {
@@ -29,11 +29,13 @@ async function convertFile() {
   }
   const appVars = convertDataToAppVars(data, baseName)
   const zip = new JSZip()
+  const folder = zip.folder(baseName)!
   for (let i = 0; i < appVars.length; i++) {
     const appVar = appVars[i]
     const fileName = baseName + i.toString().padStart(2, '0') + '.8xv'
-    zip.file(fileName, appVar)
+    folder.file(fileName, appVar)
   }
+  folder.file('raw.bin', data)
   const zipFileName = baseName + '.zip'
   const zipFile = await zip.generateAsync({ type: 'blob' })
   const blob = new Blob([zipFile], { type: 'application/zip' })
@@ -48,18 +50,34 @@ async function convertFile() {
   URL.revokeObjectURL(url)
 }
 
-async function makeTestFile() {
-  const testFile = convertDataToAppVars(new Uint8Array([0x62]), 'TEST')
-  const blob = new Blob([testFile[0]], { type: 'application/octet-stream' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'test.8xv'
-  a.style.display = 'none'
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+async function doTest() {
+  const canvas = new OffscreenCanvas(100, 100)
+  const ctx = canvas.getContext('2d')
+  if (!ctx) {
+    console.error('Failed to get canvas context')
+    return
+  }
+  canvas.width = 100
+  canvas.height = 100
+  ctx.fillStyle = 'white'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.fillStyle = 'black'
+  await font.fontLoaded
+  ctx.font = `48px ${font.family}`
+  ctx.textBaseline = 'top'
+  ctx.textRendering = 'geometricPrecision'
+  ctx.fillText('S', 0, 0)
+  const canvasData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const canvasEl = document.createElement('canvas')
+  canvasEl.width = canvas.width
+  canvasEl.height = canvas.height
+  const ctx2 = canvasEl.getContext('2d')
+  if (!ctx2) {
+    console.error('Failed to get canvas context')
+    return
+  }
+  ctx2.putImageData(canvasData, 0, 0)
+  document.body.appendChild(canvasEl)
 }
 </script>
 
@@ -67,7 +85,7 @@ async function makeTestFile() {
   <main>
     <div class="container">
       <!-- <p></p> -->
-    <button class="convert-button" @click="makeTestFile">Test</button>
+    <button class="convert-button" @click="doTest">Test</button>
       <h2>Step 1. Upload a file</h2>
       <FileUploader @uploaded="file = $event" />
     </div>

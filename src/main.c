@@ -55,7 +55,7 @@ typedef enum
 
 static quickrdr_state_t state = state_main;
 // state_main
-static quickrdr_option_t menu_option = option_settings;
+static quickrdr_option_t menu_option = option_open;
 // state_book_list
 #define book_list_perpage 6
 static quickrdr_book_t book_list_entries[book_list_perpage];
@@ -178,6 +178,19 @@ static int step(void)
 {
     uint8_t key = os_GetCSC();
     partial_redraw = 0;
+    if (state != state_reading)
+    {
+        if (reading_page_data != NULL)
+        {
+            free(reading_page_data);
+            reading_page_data = NULL;
+        }
+        if (reading_book != NULL)
+        {
+            quickrdr_close_book(reading_book);
+            reading_book = NULL;
+        }
+    }
     if (state == state_main)
     {
         if (key == sk_Clear)
@@ -381,7 +394,13 @@ static int step(void)
         }
         if (reading_page_data == NULL)
         {
-            reading_page_size = quickrdr_get_page_size(reading_book, reading_page, NULL);
+            reading_page_size = quickrdr_get_page_size(reading_book, reading_page);
+            if (!reading_page_size)
+            {
+                show_alert("Failed to get page size");
+                state = state_main;
+                return 1;
+            }
             dbg_printf("Page size: %u\n", reading_page_size);
             reading_page_data = malloc(reading_page_size);
             if (reading_page_data == NULL)
@@ -390,7 +409,13 @@ static int step(void)
                 state = state_main;
                 return 1;
             }
-            quickrdr_read_page(reading_book, reading_page, reading_page_data);
+            uint24_t read = quickrdr_read_page(reading_book, reading_page, reading_page_data);
+            if (!read)
+            {
+                show_alert("Failed to read page");
+                state = state_main;
+                return 1;
+            }
             dbg_printf("Page data[0]: %u\n", reading_page_data[0]);
             uint8_t var = ti_Open("QKRDSAVE", "w");
             if (var != 0)
@@ -516,7 +541,7 @@ static void draw(void)
     {
         // top bar text
         gfx_PrintStringXY(reading_book->header.name, 8, 8);
-        if (reading_page_data != NULL)
+        if (reading_page_data != NULL && !partial_redraw)
         {
             sprintf(buf, "Page %u/%u", reading_page + 1, reading_book->header.page_count);
             unsigned int width = gfx_GetStringWidth(buf);
@@ -539,6 +564,12 @@ static void draw(void)
             {
                 uint16_t glyph_id;
                 data += quickrdr_next_char(reading_book, data, &glyph_id);
+                if (glyph_id == 0)
+                {
+                    curX = 8;
+                    curY += reading_book->header.line_height;
+                    continue;
+                }
                 if (!quickrdr_read_glyph(reading_book, glyph_id, glyph))
                 {
                     show_alert("Failed to read glyph");
@@ -546,6 +577,7 @@ static void draw(void)
                     free(glyph);
                     return;
                 }
+                dbg_printf("Glyph %u @ (%u, %u)\n", glyph_id, curX, curY);
                 gfx_SetColor(COLOR_MAIN_TEXT);
                 for (int i = 0; i < glyph->height; i++)
                 {
@@ -558,15 +590,11 @@ static void draw(void)
                     }
                 }
                 curX += glyph->width;
-                if (curX + glyph->width > 320)
-                {
-                    curX = 8;
-                    curY += reading_book->header.line_height;
-                }
             }
             free(glyph);
+            dbg_printf("Done printing page %u\n", reading_page);
         }
-        else
+        if (reading_page_data == NULL)
         {
             strcpy(buf, "Loading...");
             unsigned int width = gfx_GetStringWidth(buf);
@@ -629,7 +657,7 @@ int main()
 
     while (step())
     {
-        dbg_printf("State: %u, partial redraw: %u\n", state, partial_redraw);
+        // dbg_printf("State: %u, partial redraw: %u\n", state, partial_redraw);
         if (partial_redraw)
         {
             gfx_BlitScreen();

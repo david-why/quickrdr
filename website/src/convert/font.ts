@@ -11,17 +11,21 @@ export declare interface Glyph {
 }
 
 export class TtfFont implements Font {
-  private family: string
+  public family: string
   private font: FontFace
   private glyphs: Map<string, Glyph | null>
-  private canvas: OffscreenCanvas
-  private fontLoaded: Promise<any>
+  private canvas: OffscreenCanvas | HTMLCanvasElement
+  public fontLoaded: Promise<any>
 
-  constructor(fontUrl: any, private fontSize: number) {
+  constructor(fontUrl: any, private fontSize: number, canvas?: OffscreenCanvas | HTMLCanvasElement) {
     this.family = Math.random().toString(36).substring(2, 15)
-    this.font = new FontFace(this.family, `url(${fontUrl})`)
+    this.font = new FontFace(this.family, `url(${fontUrl})`, {
+      style: 'normal',
+      weight: 'normal',
+      stretch: 'normal',
+    })
     this.glyphs = new Map()
-    this.canvas = new OffscreenCanvas(0, 0)
+    this.canvas = canvas || new OffscreenCanvas(0, 0)
     document.fonts.add(this.font)
     this.fontLoaded = this.font.load()
   }
@@ -31,21 +35,24 @@ export class TtfFont implements Font {
       return this.glyphs.get(text) || null
     }
     await this.fontLoaded
-    const ctx = this.canvas.getContext('2d')
+    const ctx = this.canvas.getContext('2d') as OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D
     if (!ctx) {
       throw new Error('Failed to get 2D context')
     }
     ctx.font = `${this.fontSize}px ${this.family}`
+    console.log('font', ctx.font)
     const metrics = ctx.measureText(text)
-    const width = Math.ceil(metrics.width)
-    const height = Math.ceil(this.fontSize)
+    const width = Math.ceil(metrics.actualBoundingBoxRight + metrics.actualBoundingBoxLeft)
+    const height = Math.ceil(metrics.fontBoundingBoxAscent + metrics.actualBoundingBoxDescent)
     this.canvas.width = width
     this.canvas.height = height
     ctx.clearRect(0, 0, width, height)
     ctx.fillStyle = 'white'
     ctx.fillRect(0, 0, width, height)
     ctx.fillStyle = 'black'
-    ctx.fillText(text, 0, this.fontSize)
+    ctx.textBaseline = 'top'
+    ctx.font = `${this.fontSize}px ${this.family}`
+    ctx.fillText(text, 0, 0)
     const imageData = ctx.getImageData(0, 0, width, height)
     const data = new Uint8Array(Math.ceil(width * height / 8))
     for (let y = 0; y < height; y++) {
@@ -55,6 +62,16 @@ export class TtfFont implements Font {
         setBit(data, bitIndex, isBlack)
       }
     }
+    // TODO delete me
+    // const debugCanvas = document.createElement('canvas')
+    // const debugCtx = debugCanvas.getContext('2d')
+    // if (!debugCtx) {
+    //   throw new Error('Failed to get 2D context')
+    // }
+    // debugCanvas.width = width
+    // debugCanvas.height = height
+    // debugCtx.putImageData(imageData, 0, 0)
+    // document.body.appendChild(debugCanvas)
     const glyph: Glyph = {
       width,
       height,
@@ -65,4 +82,5 @@ export class TtfFont implements Font {
   }
 }
 
-export const font = new TtfFont('/SourceHanSerifSC-VF.ttf.woff2', 16)
+export const font = new TtfFont('/font.ttf', 16)
+// export const font = new TtfFont('/font.ttf', 16)

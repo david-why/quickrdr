@@ -15,7 +15,7 @@ export class QuickRDRFile {
     const font_glyph_count = this.glyphs.length
     const font_glyph_size = Math.max(...this.glyphs.map((glyph) => glyph.data.length)) + 4
     const page_count = this.pages.length
-    const total_size = 44 + 3 * page_count + font_glyph_count * font_glyph_size + this.pages.reduce((acc, page) => acc + page.length, 0)
+    const total_size = 34 + 3 * page_count + font_glyph_count * font_glyph_size + this.pages.reduce((acc, page) => acc + page.length, 0)
     const buffer = new Uint8Array(total_size)
     const dataView = new DataView(buffer.buffer)
     dataView.setUint32(0, magic)
@@ -32,25 +32,28 @@ export class QuickRDRFile {
     buffer[24] = this.min_extension_byte
     buffer[25] = this.line_height
     dataView.setUint32(26, font_glyph_count, true)
-    buffer[29] = font_glyph_size
-    dataView.setUint32(30, page_count, true)
-    let offset = 33
+    dataView.setUint16(29, font_glyph_size, true)
+    dataView.setUint32(31, page_count, true)
+    let offset = 34
+    let pageOffset = 34 + 3 * page_count + font_glyph_count * font_glyph_size
     for (let i = 0; i < page_count; i++) {
-      dataView.setUint32(offset, this.pages[i].length, true)
+      dataView.setUint32(offset, pageOffset, true)
       offset += 3
+      pageOffset += this.pages[i].length
     }
     for (let i = 0; i < font_glyph_count; i++) {
+      console.log('glyph', this.glyphs[i], 'data length', this.glyphs[i].data.length, 'font_glyph_size', font_glyph_size)
       const glyph = this.glyphs[i]
       dataView.setUint16(offset, glyph.id, true)
-      offset += 2
-      buffer[offset] = glyph.width
-      offset += 1
-      buffer[offset] = glyph.height
-      offset += 1
+      buffer[offset + 2] = glyph.width
+      buffer[offset + 3] = glyph.height
       for (let j = 0; j < glyph.data.length; j++) {
-        buffer[offset + j] = glyph.data[j]
+        buffer[offset + 4 + j] = glyph.data[j]
       }
-      offset += glyph.data.length
+      for (let j = glyph.data.length; j < font_glyph_size - 4; j++) {
+        buffer[offset + 4 + j] = 0
+      }
+      offset += font_glyph_size
     }
     for (let i = 0; i < page_count; i++) {
       const page = this.pages[i]
