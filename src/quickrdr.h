@@ -40,8 +40,9 @@ typedef struct
 struct quickrdr_book_handle
 {
     quickrdr_header_t header;
-    uint8_t var;
-    uint24_t current_var;
+    uint24_t cur_offset;
+    char filename[9];
+    const uint8_t *chunk_pointer[100];
 };
 typedef struct quickrdr_book_handle *quickrdr_book_handle_t;
 

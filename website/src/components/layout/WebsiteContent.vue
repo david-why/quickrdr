@@ -6,6 +6,7 @@ import { convertTextToQuickRDR } from '@/convert/convert'
 import { font } from '@/convert/font'
 import { convertDataToAppVars } from '@/convert/ti'
 import JSZip from 'jszip'
+import QUICKRDRExec from '@/assets/QUICKRDR.8xp?inline'
 
 const file = ref<Blob | null>(new Blob(['abcd'], { type: 'text/plain' }))
 
@@ -35,7 +36,8 @@ async function convertFile() {
     const fileName = baseName + i.toString().padStart(2, '0') + '.8xv'
     folder.file(fileName, appVar)
   }
-  folder.file('raw.bin', data)
+  // folder.file('raw.bin', data)
+  folder.file('QUICKRDR.8xp', QUICKRDRExec.split(',')[1], { base64: true })
   const zipFileName = baseName + '.zip'
   const zipFile = await zip.generateAsync({ type: 'blob' })
   const blob = new Blob([zipFile], { type: 'application/zip' })
@@ -49,43 +51,12 @@ async function convertFile() {
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
 }
-
-async function doTest() {
-  const canvas = new OffscreenCanvas(100, 100)
-  const ctx = canvas.getContext('2d')
-  if (!ctx) {
-    console.error('Failed to get canvas context')
-    return
-  }
-  canvas.width = 100
-  canvas.height = 100
-  ctx.fillStyle = 'white'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
-  ctx.fillStyle = 'black'
-  await font.fontLoaded
-  ctx.font = `48px ${font.family}`
-  ctx.textBaseline = 'top'
-  ctx.textRendering = 'geometricPrecision'
-  ctx.fillText('S', 0, 0)
-  const canvasData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-  const canvasEl = document.createElement('canvas')
-  canvasEl.width = canvas.width
-  canvasEl.height = canvas.height
-  const ctx2 = canvasEl.getContext('2d')
-  if (!ctx2) {
-    console.error('Failed to get canvas context')
-    return
-  }
-  ctx2.putImageData(canvasData, 0, 0)
-  document.body.appendChild(canvasEl)
-}
 </script>
 
 <template>
   <main>
     <div class="container">
       <!-- <p></p> -->
-    <button class="convert-button" @click="doTest">Test</button>
       <h2>Step 1. Upload a file</h2>
       <FileUploader @uploaded="file = $event" />
     </div>

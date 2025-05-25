@@ -73,23 +73,8 @@ unsigned int quickrdr_count_files(void)
 
 static int book_seek(quickrdr_book_handle_t book, uint24_t offset)
 {
-    if (book->current_var != offset / CHUNK_SIZE)
-    {
-        char name[10];
-        ti_GetName(name, book->var);
-        ti_Close(book->var);
-        size_t len = strlen(name);
-        name[len - 2] = '0' + (offset / CHUNK_SIZE / 10);
-        name[len - 1] = '0' + (offset / CHUNK_SIZE) % 10;
-        book->var = ti_Open(name, "r");
-        if (book->var == 0)
-        {
-            dbg_printf("Failed to open book var %s\n", name);
-            return EOF;
-        }
-        book->current_var = offset / CHUNK_SIZE;
-    }
-    return ti_Seek(offset % CHUNK_SIZE, SEEK_SET, book->var);
+    book->cur_offset = offset;
+    return 0;
 }
 
 static size_t book_read(quickrdr_book_handle_t book, void *buf, size_t size)
@@ -97,13 +82,16 @@ static size_t book_read(quickrdr_book_handle_t book, void *buf, size_t size)
     size_t read = 0;
     while (size)
     {
-        size_t this_read = ti_Read(buf + read, 1, size - read, book->var);
-        if (!this_read)
+        size_t chunk_size = CHUNK_SIZE - book->cur_offset % CHUNK_SIZE;
+        if (chunk_size > size)
         {
-            return read;
+            chunk_size = size;
         }
-        read += this_read;
-        book_seek(book, book->current_var * CHUNK_SIZE + ti_Tell(book->var));
+        memcpy(buf, book->chunk_pointer[book->cur_offset / CHUNK_SIZE] + book->cur_offset, chunk_size);
+        buf += chunk_size;
+        size -= chunk_size;
+        book->cur_offset += chunk_size;
+        read += chunk_size;
     }
     return read;
 }
@@ -122,35 +110,53 @@ quickrdr_book_handle_t quickrdr_open_book(const char *filename)
         dbg_printf("Failed to allocate memory for book handle\n");
         return NULL;
     }
-    book->var = ti_Open(filename, "r");
-    if (book->var == 0)
+    uint8_t var0 = ti_Open(filename, "r");
+    if (var0 == 0)
     {
         dbg_printf("Failed to open book var %s\n", filename);
         goto err_free;
     }
-    ti_Seek(0, SEEK_SET, book->var);
-    size_t read = book_read(book, &book->header, sizeof(book->header));
-    if (read != sizeof(book->header))
+    size_t read = ti_Read(&book->header, sizeof(book->header), 1, var0);
+    if (read != 1)
     {
         dbg_printf("Read failed, read %u bytes\n", read);
         goto err_close;
     }
+    ti_Close(var0);
     if (memcmp(book->header.magic, "QRDR", 4) != 0)
     {
         dbg_printf("Invalid magic data\n");
-        goto err_close;
+        goto err_free;
     }
     if (book->header.version != 1)
     {
         dbg_printf("Invalid version %u\n", book->header.version);
-        goto err_close;
+        goto err_free;
     }
-    book->current_var = 0;
+    for (unsigned int i = 0; i < (book->header.total_size + CHUNK_SIZE - 1) / CHUNK_SIZE; i++)
+    {
+        dbg_printf("Loading chunk %u\n", i);
+        char buf[10] = {0};
+        strcpy(buf, filename);
+        size_t len = strlen(buf);
+        buf[len - 2] = '0' + i / 10;
+        buf[len - 1] = '0' + i % 10;
+        uint8_t var = ti_Open(buf, "r");
+        if (var == 0)
+        {
+            dbg_printf("Failed to open book var %s\n", buf);
+            goto err_close;
+        }
+        book->chunk_pointer[i] = ti_GetDataPtr(var);
+        ti_Close(var);
+    }
+    strncpy(book->filename, filename, sizeof(book->filename));
+    book->cur_offset = 0;
 
     return book;
 
 err_close:
-    ti_Close(book->var);
+    ti_Close(var0);
 err_free:
     free(book);
     return NULL;
@@ -162,7 +168,6 @@ void quickrdr_close_book(quickrdr_book_handle_t book)
     {
         return;
     }
-    ti_Close(book->var);
     free(book);
 }
 
@@ -302,9 +307,5 @@ void quickrdr_get_book_filename(quickrdr_book_handle_t book, char *filename)
         filename[0] = '\0';
         return;
     }
-    ti_GetName(filename, book->var);
-    size_t len = strlen(filename);
-    filename[len - 2] = '0';
-    filename[len - 1] = '0';
-    filename[len] = '\0';
+    strcpy(filename, book->filename);
 }
