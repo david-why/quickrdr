@@ -540,7 +540,10 @@ static void draw(void)
     else if (state == state_reading)
     {
         // top bar text
-        gfx_PrintStringXY(reading_book->header.name, 8, 8);
+        if (reading_book)
+        {
+            gfx_PrintStringXY(reading_book->header.name, 8, 8);
+        }
         if (reading_page_data != NULL && !partial_redraw)
         {
             sprintf(buf, "Page %u/%u", reading_page + 1, reading_book->header.page_count);
@@ -596,8 +599,11 @@ static void draw(void)
         }
         if (reading_page_data == NULL)
         {
+            unsigned int width = reading_book != NULL ? gfx_GetStringWidth(reading_book->header.name) : 0;
+            gfx_SetColor(COLOR_BAR_BG);
+            gfx_FillRectangle_NoClip(width + 8, 0, 312 - width, 24);
             strcpy(buf, "Loading...");
-            unsigned int width = gfx_GetStringWidth(buf);
+            width = gfx_GetStringWidth(buf);
             gfx_PrintStringXY(buf, 320 - width - 8, 8);
         }
     }

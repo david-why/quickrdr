@@ -116,7 +116,7 @@ quickrdr_book_handle_t quickrdr_open_book(const char *filename)
         dbg_printf("Filename %s does not end with 00\n", filename);
         return NULL;
     }
-    quickrdr_book_handle_t book = malloc(sizeof(struct quickrdr_book_handle));
+    quickrdr_book_handle_t book = calloc(1, sizeof(struct quickrdr_book_handle));
     if (book == NULL)
     {
         dbg_printf("Failed to allocate memory for book handle\n");

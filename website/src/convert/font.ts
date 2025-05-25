@@ -63,15 +63,15 @@ export class TtfFont implements Font {
       }
     }
     // TODO delete me
-    // const debugCanvas = document.createElement('canvas')
-    // const debugCtx = debugCanvas.getContext('2d')
-    // if (!debugCtx) {
-    //   throw new Error('Failed to get 2D context')
-    // }
-    // debugCanvas.width = width
-    // debugCanvas.height = height
-    // debugCtx.putImageData(imageData, 0, 0)
-    // document.body.appendChild(debugCanvas)
+    const debugCanvas = document.createElement('canvas')
+    const debugCtx = debugCanvas.getContext('2d')
+    if (!debugCtx) {
+      throw new Error('Failed to get 2D context')
+    }
+    debugCanvas.width = width
+    debugCanvas.height = height
+    debugCtx.putImageData(imageData, 0, 0)
+    document.body.appendChild(debugCanvas)
     const glyph: Glyph = {
       width,
       height,
@@ -82,5 +82,5 @@ export class TtfFont implements Font {
   }
 }
 
-export const font = new TtfFont('/font.ttf', 16)
+export const font = new TtfFont('/unifont.otf', 16)
 // export const font = new TtfFont('/font.ttf', 16)
