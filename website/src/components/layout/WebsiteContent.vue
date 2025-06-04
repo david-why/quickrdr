@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import FileUploader from '../FileUploader.vue'
-import MetadataForm from '../MetadataForm.vue'
+import QUICKRDRExec from '@/assets/QUICKRDR.8xp?inline'
 import { convertTextToQuickRDR } from '@/convert/convert'
 import { font } from '@/convert/font'
 import { convertDataToAppVars } from '@/convert/ti'
+import { delay } from '@/utils'
 import JSZip from 'jszip'
-import QUICKRDRExec from '@/assets/QUICKRDR.8xp?inline'
+import { ref } from 'vue'
+import FileUploader from '../FileUploader.vue'
+import MetadataForm from '../MetadataForm.vue'
 
-const file = ref<Blob | null>(new Blob(['abcd'], { type: 'text/plain' }))
+const file = ref<Blob | null>(null)
+const title = ref('')
 
-const title = ref('test book')
+const isConverting = ref(false)
+const isFinished = ref(false)
 
 async function convertFile() {
   if (!file.value) {
@@ -28,36 +31,52 @@ async function convertFile() {
   if (baseName.charCodeAt(0) < 65) {
     baseName = 'A' + baseName.substring(1)
   }
-  const appVars = convertDataToAppVars(data, baseName)
-  const zip = new JSZip()
-  const folder = zip.folder(baseName)!
-  for (let i = 0; i < appVars.length; i++) {
-    const appVar = appVars[i]
-    const fileName = baseName + i.toString().padStart(2, '0') + '.8xv'
-    folder.file(fileName, appVar)
+  isConverting.value = true
+  await delay(100)
+  try {
+    const appVars = convertDataToAppVars(data, baseName)
+    const zip = new JSZip()
+    const folder = zip.folder(baseName)!
+    for (let i = 0; i < appVars.length; i++) {
+      const appVar = appVars[i]
+      const fileName = baseName + i.toString().padStart(2, '0') + '.8xv'
+      folder.file(fileName, appVar)
+    }
+    // folder.file('raw.bin', data)
+    folder.file('QUICKRDR.8xp', QUICKRDRExec.split(',')[1], { base64: true })
+    const zipFileName = baseName + '.zip'
+    const zipFile = await zip.generateAsync({ type: 'blob' })
+    const blob = new Blob([zipFile], { type: 'application/zip' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = zipFileName
+    a.style.display = 'none'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    isFinished.value = true
+  } finally {
+    isConverting.value = false
   }
-  // folder.file('raw.bin', data)
-  folder.file('QUICKRDR.8xp', QUICKRDRExec.split(',')[1], { base64: true })
-  const zipFileName = baseName + '.zip'
-  const zipFile = await zip.generateAsync({ type: 'blob' })
-  const blob = new Blob([zipFile], { type: 'application/zip' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = zipFileName
-  a.style.display = 'none'
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
 }
 </script>
 
 <template>
-  <main>
+  <main :class="{ converting: isConverting }">
     <div class="container">
-      <!-- <p></p> -->
-      <h2>Step 1. Upload a file</h2>
+      <p>
+        QuickRDR is an E-book reader for your TI-84+ CE calculator. You can read any book you'd
+        like, as long as it fits in the calculator's storage limit (about 2MB).
+      </p>
+      <p>
+        This website lets you convert your E-book to a program on your calculator to read it. Follow
+        the steps below to get started!
+      </p>
+    </div>
+    <div class="container">
+      <h2>Step 1. Upload a text E-Book file</h2>
       <FileUploader @uploaded="file = $event" />
     </div>
     <div class="container" v-if="file">
@@ -66,12 +85,29 @@ async function convertFile() {
     </div>
     <div class="container" v-if="file && title">
       <h2>Step 3. Convert!</h2>
-      <div><button class="convert-button" @click="convertFile">Convert</button></div>
+      <p>This may take a while and appear to hang - that's fine. Just hang tight!</p>
+      <p><button class="convert-button" @click="convertFile">Convert</button></p>
+    </div>
+    <div class="container" v-if="isFinished">
+      <h2>Step 4. Send to calculator &amp; Enjoy!</h2>
+      <p>
+        Unzip the downloaded file and send ALL files inside to your calculator, using the
+        <a
+          href="https://education.ti.com/en/products/computer-software/ti-connect-ce-sw"
+          target="_blank"
+          >TI Connect™ CE software</a
+        >
+        or some other method. (If you already have prgmQUICKRDR on your calculator, you can skip
+        that one!)
+      </p>
     </div>
   </main>
 </template>
 
 <style scoped>
+.converting {
+  cursor: progress;
+}
 .convert-button {
   background-color: var(--color-bar-background);
   border: none;

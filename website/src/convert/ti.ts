@@ -25,7 +25,7 @@ export function convertDataToAppVars(data: Uint8Array, name: string): Uint8Array
     for (let i = 0; i < entry.byteLength; i++) {
       checksum += entry[i]
     }
-    checksum = checksum & 0xFFFF
+    checksum = checksum & 0xffff
     dataView.setUint16(55 + entry.byteLength, checksum, true)
     files.push(buffer)
   }

@@ -55,11 +55,17 @@ function handleFileChange() {
           class="file-input"
           ref="fileInput"
         />
-        <p>Upload your .TXT ebook file:</p>
-        <p>📄 Drag and drop or click to browse</p>
+        <template v-if="!uploadedFile">
+          <p>Upload your .TXT ebook file:</p>
+          <p>📄 Drag and drop or click to browse</p>
+        </template>
+        <template v-else>
+          <p>✅ Selected file: {{ uploadedFile.name }}</p>
+          <p>📄 Drag and drop or click to browse</p>
+        </template>
       </label>
     </div>
-    <p v-if="uploadedFile">File uploaded: {{ uploadedFile.name }}</p>
+    <!-- <p v-if="uploadedFile"><br />File uploaded: {{ uploadedFile.name }}</p> -->
   </div>
 </template>
 
