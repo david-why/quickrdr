@@ -100,6 +100,10 @@ async function convertFile() {
         or some other method. (If you already have prgmQUICKRDR on your calculator, you can skip
         that one!)
       </p>
+      <p>
+        After you finish, run prgmQUICKRDR on your calculator. You should be able to find your book,
+        and have fun reading!
+      </p>
     </div>
   </main>
 </template>
